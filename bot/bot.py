@@ -14,6 +14,8 @@ from typing import Any
 
 
 SKILLS_URL = "https://github.com/FokinArts/speaker-ai-meetup"
+WORKFLOW_URL = "https://github.com/FokinArts/speaker-ai-meetup/blob/main/docs/meetup-speaker-ai/toolkit/workflow.md"
+ROOM_SKILL_URL = "https://github.com/FokinArts/speaker-ai-meetup/tree/main/docs/meetup-speaker-ai/toolkit/skills/rehearse-the-room"
 CLAIM = "«Мы внедрили ИИ в разработку и повысили качество»"
 INTRO = (
     "Учебная заявка:\n"
@@ -46,13 +48,37 @@ ANSWERS = {
         "не зафиксирована — так и скажите."
     ),
 }
+ROOM_INTRO = (
+    "«Дебаг заклинаний» — репетиция роли\n\n"
+    "Совет: «Делегируйте отчёт». Ваша роль: «На финальном документе должна стоять моя подпись».\n\n"
+    "Сначала подумайте сами: сформулируйте одно действие на завтра, которое делегирует подготовку, "
+    "но сохраняет ваше ограничение. Не отправляйте ответ боту — просто обдумайте его и нажмите кнопку сверки."
+)
+ROOM_ANSWER = (
+    "Сверка варианта\n\n"
+    "Первый вопрос — включает ли «отчёт» финальную проверку и подпись. Точная цитата: «Делегируйте отчёт».\n\n"
+    "Черновик: попросить коллегу собрать отчёт по согласованному плану.\n"
+    "Проверка: самому проверить итоговый документ.\n"
+    "Подпись: оставить её за собой.\n\n"
+    "Например: «Завтра попрошу коллегу собрать черновик отчёта, сам проверю итоговый документ и подпишу финальную версию». "
+    "Сравните со своим вариантом: есть ли конкретное действие на завтра и сохранены ли проверка и подпись? "
+    "Это пример по вымышленному условию, не свидетельство ответов реальных слушателей."
+)
 
 BUTTONS = [
     [{"text": "На сколько процентов?", "callback_data": "percent"}],
     [{"text": "Какую задачу проверим?", "callback_data": "task"}],
     [{"text": "Какую модель взяли?", "callback_data": "model"}],
+    [{"text": "Открыть «Дебаг заклинаний»", "callback_data": "room_start"}],
     [{"text": "↻ Повторить", "callback_data": "restart"}],
     [{"text": "Скачать навыки", "url": SKILLS_URL}],
+]
+ROOM_BUTTONS = [
+    [{"text": "Сверить мой вариант", "callback_data": "room_review"}],
+    [{"text": "Сначала", "callback_data": "room_restart"}],
+    [{"text": "Рабочая карточка", "url": WORKFLOW_URL}],
+    [{"text": "Навык репетиции зала", "url": ROOM_SKILL_URL}],
+    [{"text": "Кейс ПК", "callback_data": "legacy_start"}],
 ]
 
 
@@ -111,11 +137,15 @@ def keyboard() -> dict[str, Any]:
     return {"inline_keyboard": BUTTONS}
 
 
-def send_intro(api: TelegramClient, chat_id: int) -> None:
+def room_keyboard() -> dict[str, Any]:
+    return {"inline_keyboard": ROOM_BUTTONS}
+
+
+def send_intro(api: TelegramClient, chat_id: int, room: bool = False) -> None:
     api.call("sendMessage", {
         "chat_id": chat_id,
-        "text": INTRO,
-        "reply_markup": keyboard(),
+        "text": ROOM_INTRO if room else INTRO,
+        "reply_markup": room_keyboard() if room else keyboard(),
         "disable_web_page_preview": True,
     })
 
@@ -129,7 +159,9 @@ def handle_update(api: TelegramClient, update: dict[str, Any]) -> None:
         command = text.split(maxsplit=1)[0].split("@", 1)[0] if isinstance(text, str) and text.split() else ""
         if command == "/start":
             if isinstance(chat, dict) and isinstance(chat.get("id"), int):
-                send_intro(api, chat["id"])
+                args = text.split(maxsplit=1)
+                room = len(args) > 1 and args[1].strip().lower() == "room"
+                send_intro(api, chat["id"], room=room)
         return
 
     query = update.get("callback_query")
@@ -153,13 +185,25 @@ def handle_update(api: TelegramClient, update: dict[str, Any]) -> None:
         if not (exc.status_code == 400):
             raise
 
-    if data == "restart":
+    if data in ("restart", "room_start", "legacy_start", "room_restart"):
+        if isinstance(chat_id, int) and isinstance(message_id, int):
+            room = data in ("room_start", "room_restart")
+            api.call("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": ROOM_INTRO if room else INTRO,
+                "reply_markup": room_keyboard() if room else keyboard(),
+                "disable_web_page_preview": True,
+            })
+        return
+
+    if data == "room_review":
         if isinstance(chat_id, int) and isinstance(message_id, int):
             api.call("editMessageText", {
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": INTRO,
-                "reply_markup": keyboard(),
+                "text": ROOM_ANSWER + "\n\nСверить ещё раз или перейти к кейсу ПК?",
+                "reply_markup": room_keyboard(),
                 "disable_web_page_preview": True,
             })
         return

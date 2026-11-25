@@ -66,6 +66,43 @@ def main():
     ]
     assert buttons[-2][0]["callback_data"] == "restart"
     assert buttons[-1][0]["url"] == bot.SKILLS_URL
+    assert any(row[0].get("callback_data") == "room_start" for row in buttons)
+
+    bot.handle_update(api, {
+        "update_id": 10,
+        "message": {"text": "/start room", "chat": {"id": 42}},
+    })
+    room_payload = api.calls[-1][1]
+    assert room_payload["text"] == bot.ROOM_INTRO
+    assert "Сначала подумайте сами" in room_payload["text"]
+    room_buttons = room_payload["reply_markup"]["inline_keyboard"]
+    assert room_buttons[0][0] == {"text": "Сверить мой вариант", "callback_data": "room_review"}
+    assert room_buttons[1][0]["callback_data"] == "room_restart"
+    assert room_buttons[2][0]["url"] == bot.WORKFLOW_URL
+    assert room_buttons[3][0]["url"] == bot.ROOM_SKILL_URL
+
+    bot.handle_update(api, {
+        "update_id": 11,
+        "callback_query": {
+            "id": "room-review-query",
+            "data": "room_review",
+            "message": {"message_id": 8, "chat": {"id": 42}},
+        },
+    })
+    room_answer = api.calls[-1][1]
+    assert "Черновик:" in room_answer["text"]
+    assert "Проверка:" in room_answer["text"]
+    assert "Подпись:" in room_answer["text"]
+
+    bot.handle_update(api, {
+        "update_id": 12,
+        "callback_query": {
+            "id": "room-restart-query",
+            "data": "room_restart",
+            "message": {"message_id": 8, "chat": {"id": 42}},
+        },
+    })
+    assert api.calls[-1][1]["text"] == bot.ROOM_INTRO
 
     bot.handle_update(api, {
         "update_id": 2,
@@ -98,7 +135,7 @@ def main():
     assert any(method == "sendMessage" for method, _ in polling_api.calls)
     assert polling_api.offsets == [None, 13]
 
-    print("OK: start, question, restart, skills link, duplicate click, and permanent-error queue progress")
+    print("OK: legacy and room flows, review, restart, links, duplicate click, and permanent-error queue progress")
 
 
 if __name__ == "__main__":
